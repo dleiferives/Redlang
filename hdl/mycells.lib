@@ -1,0 +1,53 @@
+
+
+library(demo) {
+define(mc_width, cell, int);
+define(mc_height, cell, int);
+  cell(BUF) {
+    area: 6;
+    mc_width: 1;
+    mc_height: 1;
+    width: 1;
+    pin(A) { direction: input; }
+    pin(Y) { direction: output;
+              function: "A"; }
+  }
+  cell(NOT) {
+    area: 3;
+    mc_width: 1;
+    mc_heigh: 3;
+    pin(A) { direction: input; }
+    pin(Y) { direction: output;
+              function: "A'"; }
+  }
+  cell(NAND) {
+    mc_width: 4;
+    mc_height: 4;
+    area: 4;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output;
+             function: "(A*B)'"; }
+  }
+  cell(NOR) {
+    mc_width: 4;
+    mc_height: 4;
+    area: 4;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output;
+             function: "(A+B)'"; }
+  }
+  cell(DFF) {
+    area: 18;
+    mc_width: 8;
+    mc_height: 8;
+    ff(IQ, IQN) { clocked_on: C;
+                  next_state: D; }
+    pin(C) { direction: input;
+                 clock: true; }
+    pin(D) { direction: input; }
+    pin(Q) { direction: output;
+              function: "IQ"; }
+  }
+}
