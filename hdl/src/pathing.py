@@ -46,13 +46,19 @@ class AStarSolver:
             (0, -1, 0),
         ]
         # Staircase moves upward (requires a horizontal component)
-        self.staircase_moves = [
+        self.staircase_moves_up = [
             (1, 0, 1),
             (-1, 0, 1),
             (0, 1, 1),
             (0, -1, 1),
         ]
-        self.all_moves = self.horizontal_moves + self.staircase_moves
+        self.staircase_moves_down = [
+            (1, 0, -1),
+            (-1, 0, -1),
+            (0, 1, -1),
+            (0, -1, -1),
+        ]
+        self.all_moves = self.horizontal_moves + self.staircase_moves_up + self.staircase_moves_down
 
     def in_bounds(self, pos: Tuple[int, int, int]) -> bool:
         """Check if pos is within bounds."""
@@ -94,7 +100,7 @@ class AStarSolver:
                     return False
 
         # Vertical clearance: a gap of 2 cells above.
-        for dz in [1, 2]:
+        for dz in [1, -1]:
             above = (x, y, z + dz)
             if self.in_bounds(above):
                 if self.get_kind(*above) is not None:
@@ -172,7 +178,7 @@ class AStarSolver:
                     else:
                         # kind is presumed to be a path (list of positions).
                         # Verify that the alternative path starts at neighbor.
-                        if not (isinstance(kind, list) and kind and kind[0] == neighbor):
+                        if not (isinstance(kind, list) and kind and((kind[-1] == start or kind[0] == goal) or(kind[0] == start or kind[-1] == goal))):
                             # If not, treat it as blocked.
                             continue
                         # For each position along the alternate route,
@@ -185,8 +191,8 @@ class AStarSolver:
                             if alt_pos != start and alt_pos != goal:
                                 if not self.in_bounds(alt_pos):
                                     continue
-                                if not self._has_clearance(alt_pos):
-                                    continue
+                                # if not self._has_clearance(alt_pos):
+                                #     continue
                             extra_paths.append((alt_pos, index))
                     # Process each possible alternative endpoint.
                     for alt_pos, extra_cost in extra_paths:
@@ -207,6 +213,7 @@ class AStarSolver:
                         heapq.heappush(open_set, (priority, total_cost, neighbor))
                         came_from[neighbor] = current
 
+        return []
         raise NoPathFoundError(
             "No valid path found from start to goal using the provided constraints."
         )

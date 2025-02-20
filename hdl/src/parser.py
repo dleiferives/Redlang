@@ -167,6 +167,7 @@ class Layout:
         self.gen_wires = []
         self.cells_lut = {}
         self.a_star = None;
+        random.seed(420)
 
     def deserialize_layout(filename):
         with open(filename, 'rb') as file:
@@ -212,6 +213,8 @@ class Layout:
         output_paths = []
         for cell in self.generated_cells:
             kind = CELL_KINDS[cell.kind]
+            if 'outputs' not in kind:
+                continue
             for out_name, out_rpos in kind['outputs'].items():
                 startx = out_rpos['x'] + cell.pos[0]
                 starty = out_rpos['y'] + cell.pos[1]
@@ -231,10 +234,12 @@ class Layout:
                         endz = end_pos['z'] + dcell.pos[2]
                         output_paths.append(((startx,starty,startz),(endx,endy,endz)))
 
-        print(f"{len(output_path)} to solve")
+        print(f"{len(output_paths)} to solve")
         for idx, path in enumerate(output_paths):
-            print(f"{idx} / {len(output_path)} solved")
+            print(f"{idx} / {len(output_paths)} solved")
             solved_path = self.a_star.solve(path[0],path[1])
+            if(len(solved_path) == 0):
+                print(path)
             self.gen_wires.append(solved_path)
             self.fill_path(solved_path)
 
@@ -445,3 +450,4 @@ class Cell:
         if ports == None:
             ports = {}
             print(f"WARNING: no ports for cell {name}")
+        self.ports = ports

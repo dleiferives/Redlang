@@ -57,7 +57,7 @@ class NBTGenerator:
                 for _ in range(width)
         ]
 
-        cells = self.layout.generated_cells;
+        cells = layout.generated_cells;
         # Mark cell volumes as white wool.
         for cell in cells:
                 c_x = cell.pos[0]
@@ -73,7 +73,7 @@ class NBTGenerator:
                                         sim_y = c_y + dy
                                         sim_z = c_z + dz
                                         grid[sim_x][sim_y][sim_z] = "minecraft:white_wool"
-        wires = self.gen_wires
+        wires = layout.gen_wires
         for wire in wires:
             for step in wire:
                 tx = step[0]
