@@ -79,7 +79,7 @@ class AStarSolver:
 
     def _has_clearance(
         self, pos: Tuple[int, int, int], start: Tuple[int, int, int],
-        goal: Tuple[int, int, int]
+            goal: Tuple[int, int, int], ignore=[]
     ) -> bool:
         """
         Check if the given cell at pos satisfies the clearance requirement.
@@ -92,29 +92,95 @@ class AStarSolver:
         """
         x, y, z = pos
 
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                for dz in [-1, 0, 1]:
-                    if dx == 0 and dy == 0 and dz == 0:
-                        continue  # Skip the cell itself.
-                    neighbor = (x + dx, y + dy, z + dz)
-                    # If the neighbor is an endpoint, allow any content.
-                    if neighbor == start or neighbor == goal:
-                        return True
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                for dz in [-1, 0, 1]:
-                    if dx == 0 and dy == 0 and dz == 0:
-                        continue  # Skip the cell itself.
-                    if not self.in_bounds(neighbor):
+        for d in [[0, 0, 1],
+                    [0, 0, -1],
+                    [1, 0, 0],
+                    [-1, 0, 0],
+                    [0, 1, 0],
+                    [0, -1, 0]
+                    ]:
+            dx, dy, dz = d
+            neighbor = (x + dx, y + dy, z + dz)
+            if(neighbor in ignore):
+                continue
+            # If the neighbor is an endpoint, allow any content.
+            if neighbor == start or neighbor == goal:
+                ignore.append(neighbor)
+        for d in [[0, 0, 1],
+                    [0, 0, -1],
+                    [1, 0, 0],
+                    [-1, 0, 0],
+                    [0, 1, 0],
+                    [0, -1, 0]
+                    ]:
+            dx, dy, dz = d
+            neighbor = (x + dx, y + dy, z + dz)
+            kind = self.get_kind(*neighbor)
+            if(neighbor in ignore):
+                continue
+            if dx == 0 and dy == 0 and dz == 0:
+                continue  # Skip the cell itself.
+            if not self.in_bounds(neighbor):
+                # if(start == (9, 20, 34)):
+                #     print(f"failed {neighbor} bounds")
+                return False
+            # The neighbor must be air.
+            if kind == False:
+                return False
+            if kind is None:
+                flag = True
+                if len(ignore) == 0:
+                    for d2 in [[0,0,0],
+                            [0, 0, 1],
+                                [0, 0, -1],
+                                [1, 0, 0],
+                                [-1, 0, 0],
+                                [0, 1, 0],
+                                [0, -1, 0]
+                                ]:
+                        dx2, dy2, dz2 = d2
+                        n2 = (neighbor[0] + dx2, neighbor[1] + dy2, neighbor[2] + dz2)
+                        if n2 in ignore:
+                            continue
+                        k2 = self.get_kind(*n2)
+                        if n2 == start or n2 == goal:
+                            flag = True
+                            break
+                        if k2 == False:
+                            flag = False
+                        if k2 is None:
+                            continue
+                        else:
+                            p2, s2, *_ = k2
+                            if p2[0] == start or p2[0] == goal:
+                                continue
+                            if p2[1] == goal or p2[1] == start:
+                                continue
+                            flag = False
+
+                    if flag == True:
+                        continue
+                    else:
                         return False
-                    # The neighbor must be air.
-                    if self.get_kind(*neighbor) is not None:
-                        return False
+                else:
+                    continue
+            if not (isinstance(kind, tuple)):
+                return False
+            else:
+                pid, state, *_ = kind
+                if state is None and dz == -1:
+                    continue
+                if pid[0] == start or pid[0] == goal:
+                    continue
+                if pid[1] == goal or pid[1] == start:
+                    continue
+                # if(start == (9, 20, 34)):
+                #     print(f"failed {neighbor} path")
+                return False
         return True
 
     def solve(
-        self, start: Tuple[int, int, int], goal: Tuple[int, int, int]
+        self, start: Tuple[int, int, int], goal: Tuple[int, int, int],max_iterations
     ) -> List[Tuple[int, int, int]]:
         """
         Perform A* search from start to goal.
@@ -131,6 +197,11 @@ class AStarSolver:
           OutOfBoundsError: if start or goal are out of bounds.
           NoPathFoundError: if no valid path exists.
         """
+        if max_iterations == -1:
+            iterations = 100000000000000
+        else:
+            iterations = max_iterations
+        # print(iterations)
         if not self.in_bounds(start):
             raise OutOfBoundsError("Start position is out of bounds")
         if not self.in_bounds(goal):
@@ -143,7 +214,11 @@ class AStarSolver:
                         Optional[Tuple[int, int, int]]] = {start: None}
         cost_so_far: Dict[Tuple[int, int, int], int] = {start: 0}
 
+        it_counter = 0
         while open_set:
+            if(it_counter > iterations):
+                return False
+            it_counter += 1
             _, current_cost, current = heapq.heappop(open_set)
 
             if current == goal:
@@ -156,6 +231,10 @@ class AStarSolver:
                 return path
 
             for dx, dy, dz in self.all_moves:
+                if(it_counter > iterations):
+                    return False
+                it_counter += 1
+                extra_paths =[]
                 neighbor = (
                     current[0] + dx,
                     current[1] + dy,
@@ -168,7 +247,7 @@ class AStarSolver:
                 # For endpoints, clearances are not enforced.
                 if neighbor != start and neighbor != goal:
                     kind = self.get_kind(*neighbor)
-                    if kind == "full":
+                    if kind == False:
                         continue
 
                     if kind is None:
@@ -179,23 +258,36 @@ class AStarSolver:
                     else:
                         # If get_kind returns an integrated path, then only allow it if it
                         # begins or ends with the start or goal.
-                        if not (isinstance(kind, list) and kind):
+                        if not (isinstance(kind, tuple) and kind):
                             continue
-                        if (
-                            kind[0] == start or kind[-1] == goal
-                        ):
-                            # Allow a jump along the integrated path, with the jump cost based
-                            # on the index along the integrated path.
-                            extra_paths = [(neighbor, 0)]
-                            # for index, alt_pos in enumerate(kind):
-                            #     # If an integrated cell is not an endpoint, assume its clearance
-                            #     # is guaranteed by its integrated configuration.
-                            #     if alt_pos != start and alt_pos != goal:
-                            #         if not self.in_bounds(alt_pos):
-                            #             continue
-                            #     extra_paths.append((alt_pos, index))
-                        else:
-                            continue
+                        npid, nstate, nneb, npath = kind
+                        nstart, ngoal = npid
+                        if ngoal == goal:
+                            ncst = 0
+                            if nstate == True:
+                            # we have found our path to the goal
+                                if nneb not in npath:
+                                    continue
+
+                                else:
+                                    continue
+                            else:
+                                # we are one away and just have to produce
+                                tdx, tdy, tdz = nneb
+                                if nneb in npath:
+                                    extra_paths.append((neighbor, 0))
+                                    ncst = 1
+                                else:
+                                    continue
+
+
+                            nindex = npath.index(nneb)
+                            nnpath = npath[nindex:]
+                            for nix, nstep in enumerate(nnpath):
+                                extra_paths.append((nstep,nix + ncst))
+
+                        elif nstart == start:
+                            extra_paths.append((neighbor,0))
 
                     for alt_pos, extra_cost in extra_paths:
                         new_cost = cost_so_far[current] + 1 + extra_cost

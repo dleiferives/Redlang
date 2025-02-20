@@ -6,6 +6,7 @@ import pickle
 from datetime import datetime
 import os
 from pathing import AStarSolver
+import copy
 
 ## TODO @(dleiferives,4b111f97-d7e1-484f-8a5c-6d4680635be1): add rotations ~#
 
@@ -366,28 +367,97 @@ class Layout:
                         output_paths.append(((startx,starty,startz),(endx,endy,endz)))
 
         print(f"{len(output_paths)} to solve")
-        for i in range(len(output_paths)):
+        res_length = 0
+        max_len = 0
+        failed = False
+        tgrid = []
+        for i in self.grid:
+            tgrid.append(i)
+        tpaths = []
+        fpaths = []
+        for idx, path in enumerate(output_paths):
+            print(f"{idx} / {len(output_paths)} start")
+            print(f"{path[0]}{path[1]}")
+            failed = False
+            try:
+                solved_path = self.a_star.solve(path[0],path[1],100000)
+                if solved_path == False:
+                    solved_path = self.a_star.solve(path[1],path[0],100000)
+                    if(isinstance(solved_path, list)):
+                        solved_path = solved_path.reverse()
+            except:
+                fpaths.append(path)
+                failed = True
+                print("fail fast")
+                print("failed")
 
-            res_length = 0
-            max_len = 0
-            fail = False
+            else:
+                print("fast not failed")
+                if solved_path != False:
+                    if(len(solved_path) > max_len):
+                        max_len = len(solved_path)
+                    res_length += len(solved_path)
+                    tpaths.append(solved_path)
+                    self.gen_wires.append(solved_path)
+                    self.fill_path(solved_path,-1)
+                else:
+                    try:
+                        solved_path = self.a_star.solve(path[0],path[1],-1)
+                    except:
+                        fpaths.append(path)
+                        solved_path = False
+                        failed = True
+                        print("failed")
+                    else:
+                        if solved_path == False:
+                            sys.exit(no)
+
+                        if(not failed):
+                            if(len(solved_path) > max_len):
+                                max_len = len(solved_path)
+                            res_length += len(solved_path)
+                            tpaths.append(solved_path)
+                            self.gen_wires.append(solved_path)
+                            self.fill_path(solved_path,-1)
+
+        new_paths = fpaths
+        if len(fpaths) != 0:
+            self.gen_wires = []
+            self.grid = tgrid
+            self.a_star.get_kind = self.get_kind;
+            for idx, path in enumerate(tpaths):
+                self.gen_wires.append(path[:2])
+                self.fill_path(path[:2],2)
+                if(len(path) > 3):
+                    new_paths.append((path[2],path[-1]))
+
+            output_paths = new_paths
+            fpaths2 = []
             for idx, path in enumerate(output_paths):
-                print(f"{idx} / {len(output_paths)} solved")
-                print(f"{path[0]}{path[1]}")
-                solved_path = self.a_star.solve(path[0],path[1])
-                if(len(solved_path) == 0):
-                    output_paths.insert(0,output_paths.pop(idx))
-                    fail = True
-                    break
-                if(len(solved_path) > max_len):
-                    max_len = len(solved_path)
-                res_length += len(solved_path)
-                self.gen_wires.append(solved_path)
-                self.fill_path(solved_path)
-            if(fail == False):
-                return res_length, max_len
+                solved_path = []
+                try:
+                    solved_path = self.a_star.solve(path[0],path[1],-1)
+                except:
+                    fpaths2.append(path)
+                    solved_path = []
+                    print(f"{idx} / {len(output_paths)} start")
+                    print(f"{path[0]}{path[1]}")
+                    print("failed")
 
-        return -1,-1
+                if(len(solved_path) != 0):
+                    if(len(solved_path) > max_len):
+                        max_len = len(solved_path)
+                    res_length += len(solved_path)
+                    self.gen_wires.append(solved_path)
+                    print(f"len solved path {len(solved_path)}")
+                    self.fill_path(solved_path,-1)
+
+
+
+
+
+
+        return res_length, max_len
 
 
     def parse_ports(self,ports):
@@ -434,21 +504,50 @@ class Layout:
     def get_index(self,x,y,z):
         return z*self.volume[0]*self.volume[1] + y*self.volume[0] + x;
 
-    def fill_path(self, path):
-        for step in path:
+    def fill_path(self, path, n,my_grid=True):
+        if n == -1:
+            n = 1000000
+        path_id = (path[0], path[-1]), path
+        _, *r_path, _2 = path
+        ctr = 0
+        for step in r_path:
+            if (ctr > n):
+                break
             x = step[0]
             y = step[1]
             z = step[2]
-            for dz in [-1, 0, 1]:
-                filled = self.get_kind(x,y,z+dz)
-                if isinstance(filled, list):
+            ctr += 1
+            for d in [[0, 0, 0],
+                      [0, 0, 1],
+                      [0, 0, -1],
+                      [1, 0, 0],
+                      [-1, 0, 0],
+                      [0, 1, 0],
+                      [0, -1, 0]
+                      ]:
+                dx, dy, dz = d
+                filled = self.get_kind(x+dx,y+dx,z+dz)
+                if isinstance(filled, tuple):
+                    # if(filled != path_id):
+                        # print("tried to overlay two paths!")
                     continue
                 elif filled is None:
-                    if(dz != 0):
-                        self.grid[self.get_index(x,y,z+dz)] = path
+                    tpid = path_id
+                    if (d == [0,0,0]):
+                        tpid = path_id[0], True, (x,y,z), path_id[1]
+                    elif dz == 1:
+                        tpid = path_id[0], None, (x,y,z), path_id[1]
+                    else:
+                        tpid = path_id[0], False, (x,y,z), path_id[1]
+                    self.grid[self.get_index(x+dx,y+dy,z+dz)] = tpid
 
                 else:
-                    print(f"path trying to place at {x} {y} {z} object {self.grid[self.get_index(x,y,z)]} present")
+                    pass
+        if my_grid:
+            return None
+        else:
+            return grid
+                    # print(f"path trying to place at {x} {y} {z} object {self.grid[self.get_index(x,y,z)]} present")
 
     def fill_volume(self, cell):
         x = cell.pos[0]
@@ -478,25 +577,27 @@ class Layout:
                 for dz in range(height):
                     idx = self.get_index(dx+x,dy+y,dz+z);
                     self.grid[idx] = str(cell.name)
+                    if self.grid[idx] == None:
+                        self.grid[idx] = True
 
         return True
 
     def get_kind(self, x, y, z):
         if(1 + x >= self.volume[0]):
-            return "full"
+            return False
 
         if(1 + y >= self.volume[1]):
-            return "full"
+            return False
 
         if(1 + z >= self.volume[2]):
-            return "full"
+            return False
 
         idx = self.get_index(x,y,z);
         if self.grid[idx] != None:
-            if isinstance(self.grid[idx], list):
+            if isinstance(self.grid[idx], tuple):
                 return self.grid[idx]
             else:
-                return 'full'
+                return False
         else:
             return None
 
@@ -529,9 +630,9 @@ class Layout:
 
         kind = CELL_KINDS[kind];
         # oversize the volume so there is air gap
-        width = kind['x'] + 2;
-        height = kind['z'] + 2;
-        depth = kind['y'] + 2;
+        width = kind['x'] + 6;
+        height = kind['z'] + 6;
+        depth = kind['y'] + 6;
 
         for _ in range(trials):
             # random position
@@ -540,7 +641,7 @@ class Layout:
             rpos_z = random.randint(0, self.volume[2] - depth)
             if (self.volume_empty(width,height,depth,rpos_x,rpos_y,rpos_z) == True):
                 # center cell and reduce vol
-                return [rpos_x+1, rpos_y+1, rpos_z+1, width-2, depth-2, height-2]
+                return [rpos_x+3, rpos_y+3, rpos_z+3, width-6, depth-6, height-6]
 
         # no pos found in n random trials. checking every position
         if not every_pos:
@@ -551,7 +652,7 @@ class Layout:
                 for z in range(self.volume[2]):
                     if (self.volume_empty(width,height,depth,x,y,z) == True):
                         # center cell and reduce vol
-                        return [x+1, y+1, z+1, width-2, depth-2, height-2]
+                        return [x+3, y+3, z+3, width-6, depth-6, height-6]
 
         return None
 
