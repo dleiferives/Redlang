@@ -1,5 +1,3 @@
-
-
 library(demo) {
 define(mc_width, cell, int);
 define(mc_height, cell, int);
