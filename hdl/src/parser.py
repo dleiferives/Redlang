@@ -5,6 +5,7 @@ import argparse
 import pickle
 from datetime import datetime
 import os
+from pathing import AStarSolver
 
 ## TODO @(dleiferives,4b111f97-d7e1-484f-8a5c-6d4680635be1): add rotations ~#
 
@@ -163,6 +164,8 @@ class Layout:
             temp.append(None);
         self.grid = temp
         self.generated_cells = []
+        self.cells_lut = {}
+        self.a_star = None;
 
     def deserialize_layout(filename):
         with open(filename, 'rb') as file:
@@ -182,11 +185,14 @@ class Layout:
 
     def generate(self):
         self.serialize();
+        self.a_star = AStarSolver(((0,0,0),(self.volume[0],self.volume[1],self.volume[1])),self.get_kind)
         # start with ports
         for port, body in self.ports.items():
+            cell_name = port
             kind = "PORT_IN" if body['direction'] == 'input' else 'PORT_OUT'
             cell = Cell(self,port,kind)
             self.generated_cells.append(cell)
+            self.cells_lut[cell_name] = cell
             if( not self.fill_volume(cell) ):
                 print(f"Could not fill cell {cell.name} volume {cell.pos}")
 
@@ -194,12 +200,42 @@ class Layout:
 
         # then do cells
         for cell, body in self.cells.items():
+            cell_name = cell
             cell = Cell(self,cell,body['type'])
             self.generated_cells.append(cell)
+            self.cells_lut[cell_name] = cell
             if( not self.fill_volume(cell) ):
                 print(f"Could not fill cell {cell.name} volume {cell.pos}")
 
         ## TODO @(dleiferives,e48135de-37d3-47a8-9d9c-03b1bad26537): then do wires ~#
+        output_paths = []
+        for cell in self.generated_cells:
+            kind = CELL_KINDS[cell.kind]
+            for out_name, out_rpos in kind['outputs'].items():
+                startx = out_rpos['x'] + cell.pos[0]
+                starty = out_rpos['y'] + cell.pos[1]
+                startz = out_rpos['z'] + cell.pos[2]
+                dests = cell.ports[out_name];
+                for dest in dests:
+                    dname = dest[0]
+                    dport = dest[1]
+                    dcell = self.cells_lut[dname]
+                    dkind = CELL_KINDS[dcell.kind]
+                    if dport not in dkind['inputs']:
+                        print(f"wire from output {cell.name} does not go to input at {dname}")
+                    else:
+                        end_pos = dkind['inputs'][dport]
+                        endx = end_pos['x'] + dcell.pos[0]
+                        endy = end_pos['y'] + dcell.pos[1]
+                        endz = end_pos['z'] + dcell.pos[2]
+                        output_paths.append(((startx,starty,startz),(endx,endy,endz)))
+
+        print(f"{len(output_path)} to solve")
+        for idx, path in enumerate(output_paths):
+            print(f"{idx} / {len(output_path)} solved")
+            solved_path = self.a_star.solve(path[0],path[1])
+            self.fill_path(solved_path)
+
         return 0;
 
 
@@ -247,6 +283,19 @@ class Layout:
     def get_index(self,x,y,z):
         return z*self.volume[0]*self.volume[1] + y*self.volume[0] + x;
 
+    def fill_path(self, path):
+        for step in path:
+            x = step[0]
+            y = step[1]
+            z = step[2]
+            filled = self.get_kind(x,y,z)
+            if isinstance(filled, list):
+                continue
+            elif filled is None:
+                self.grid[self.get_index(x,y,z)] = path
+            else:
+                print(f"path trying to place at {x} {y} {z} object {self.grid[self.get_index(x,y,z)]} present")
+
     def fill_volume(self, cell):
         x = cell.pos[0]
         y = cell.pos[1]
@@ -274,9 +323,30 @@ class Layout:
             for dy in range(depth):
                 for dz in range(height):
                     idx = self.get_index(dx+x,dy+y,dz+z);
-                    self.grid[idx] = cell.name
+                    self.grid[idx] = str(cell.name)
 
         return True
+
+    def get_kind(self, x, y, z):
+        if(1 + x >= self.volume[0]):
+            return "full"
+
+        if(1 + y >= self.volume[1]):
+            return "full"
+
+        if(1 + z >= self.volume[2]):
+            return "full"
+
+        idx = self.get_index(x,y,z);
+        if self.grid[idx] != None:
+            if isinstance(self.grid[idx], list):
+                return self.grid[idx]
+            else:
+                return 'full'
+        else:
+            return None
+
+
     def volume_empty(self, width, height, depth, x, y, z):
         #/ TODO @(dleiferives,2568b396-654f-493a-ae21-e6215aee77a3): optimize this ~#
         if(width + x >= self.volume[0]):
