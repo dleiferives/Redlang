@@ -42,12 +42,12 @@ CELL_KINDS= {
         "z":3,
         "inputs": {
             "A": {
-                "x": 0,
-                "y": 0,
+                "x": 2,
+                "y": 1,
                 "z": 1
             },
             "B": {
-                "x": 2,
+                "x": 1,
                 "y": 0,
                 "z": 1
             }
@@ -66,12 +66,12 @@ CELL_KINDS= {
         "z":3,
         "inputs": {
             "A": {
-                "x": 0,
-                "y": 0,
+                "x": 2,
+                "y": 1,
                 "z": 1
             },
             "B": {
-                "x": 2,
+                "x": 1,
                 "y": 0,
                 "z": 1
             }
@@ -149,9 +149,122 @@ CELL_KINDS= {
 
 }
 
+# should make deep copy of layoutgenome first
+# ie making new cells
+# then do the mutations
+class LayoutGenome:
+    def __init__(self, cell_list, cell_lut, volume=[100, 100, 100]):
+        self.cell_list = cell_list  # a list of Cell objects (with their positions)
+        self.cell_lut = cell_lut    # a lookup for cells (by name)
+        self.volume = volume
+        self.fitness = None
+
+    def mutate_movement(self, mutation_rate=0.1):
+        """
+        For each cell in the genome, slightly shift its position (if allowed)
+        """
+        for cell in self.cell_list:
+            if random.random() < mutation_rate:
+                # small delta chosen from -1, 0, or 1
+                delta = [random.choice([-1, 0, 1]) for _ in range(3)]
+                new_pos = cell.pos.copy()
+                new_pos[0] += delta[0]
+                new_pos[1] += delta[1]
+                new_pos[2] += delta[2]
+
+                # Ensure the new position does not violate volume bounds.
+                if (
+                    new_pos[0] < 0
+                    or new_pos[1] < 0
+                    or new_pos[2] < 0
+                    or new_pos[0] + new_pos[3] > self.volume[0]
+                    or new_pos[1] + new_pos[4] > self.volume[1]
+                    or new_pos[2] + new_pos[5] > self.volume[2]
+                ):
+                    continue
+                cell.pos = new_pos
+
+    def random_cell_pos(self, cell):
+        """
+        Generate a completely new, random valid position for the given cell.
+        Note: The effective cell dimensions are taken from CELL_KINDS with a 1-cell
+        buffer on all sides.
+        """
+        if cell.kind not in CELL_KINDS:
+            print(f"Kind {cell.kind} not found in CELL_KINDS!")
+            sys.exit(1)
+        dims = CELL_KINDS[cell.kind]
+        ext_w = dims["x"] + 2  # extra space for air gap
+        ext_d = dims["y"] + 2
+        ext_h = dims["z"] + 2
+        x = random.randint(0, self.volume[0] - ext_w)
+        y = random.randint(0, self.volume[1] - ext_d)
+        z = random.randint(0, self.volume[2] - ext_h)
+        # Return the inner cell position (offset by 1) plus the cell dimensions.
+        return [x + 1, y + 1, z + 1, dims["x"], dims["y"], dims["z"]]
+
+    def mutate_rand_pos(self):
+        """
+        Pick a random cell and set its position completely at random.
+        """
+        cell = random.choice(self.cell_list)
+        new_pos = self.random_cell_pos(cell)
+        if new_pos:
+            cell.pos = new_pos
+
+    @staticmethod
+    def crossbreed(genome1, genome2):
+        """
+        Create a new genome by combining two parent genomes.
+        (Cells are assumed to be in the same order in both genomes.)
+        """
+        if len(genome1.cell_list) != len(genome2.cell_list):
+            print("Genomes have different number of cells, cannot crossbreed")
+            sys.exit(1)
+        new_cell_list = []
+        new_cell_lut = {}
+        for cell1, cell2 in zip(genome1.cell_list, genome2.cell_list):
+            # choose randomly from one of the parents
+            chosen = cell1 if random.random() < 0.5 else cell2
+            new_cell = copy.deepcopy(chosen)
+            new_cell_list.append(new_cell)
+            new_cell_lut[new_cell.name] = new_cell
+        return LayoutGenome(new_cell_list, new_cell_lut, volume=genome1.volume)
+
+    def to_layout(self, ports, cells_config):
+        """
+        Convert the genome into a full Layout instance. 'cells_config' and 'ports'
+        are dictionaries parsed from JSON and used by Layout. If a cell is stored in
+        the genome, a new Cell instance is created (with the genome’s cell position).
+        """
+        new_layout = Layout(cells=cells_config, ports=ports, volume=self.volume)
+        new_layout.generated_cells = []
+        new_layout.cells_lut = {}
+        for cell in self.cell_list:
+            new_cell = Cell(new_layout, cell.name, cell.kind,
+                            ports=cell.ports, pos=cell.pos)
+            new_layout.generated_cells.append(new_cell)
+            new_layout.cells_lut[new_cell.name] = new_cell
+        return new_layout
+
+    def compute_fitness(self, ports, cells_config):
+        """
+        Build a full layout from the genome and then generate wiring paths.
+        If wiring fails (generate_paths returns -1), assign a heavy penalty.
+        Otherwise, use the (negative) total wiring length as the fitness
+        (lower wiring length is better).
+        """
+        layout_tmp = self.to_layout(ports, cells_config)
+        res_length, max_len = layout_tmp.generate_paths()
+        if res_length == -1:
+            return -1e6
+        # Fitness is defined so that a lower total wiring length gives a
+        # higher fitness.
+        return -res_length
+
 
 class Layout:
-    def __init__(self,cells, ports, volume=[100,100,100]):
+    def __init__(self,cells, ports, volume=[50,50,50]):
         # cells is a dict of names -> things
         self.cells = cells
         self.ports = ports
@@ -169,6 +282,23 @@ class Layout:
         self.a_star = None;
         random.seed(420)
 
+
+
+    def to_genome(self):
+        """
+        Create and return a deep copy of this layout's genome.
+        This copies the generated_cells and rebuilds the cell lookup
+        dictionary, so that modifications to the genome do not affect
+        the original layout.
+        """
+        # Create a deep copy of the generated cells list
+        cells_copy = copy.deepcopy(self.generated_cells)
+
+        # Rebuild the lookup dictionary using the copied cells.
+        cell_lut_copy = {cell.name: cell for cell in cells_copy}
+
+        return LayoutGenome(cells_copy, cell_lut_copy, volume=self.volume)
+
     def deserialize_layout(filename):
         with open(filename, 'rb') as file:
             loaded_layout = pickle.load(file)
@@ -185,7 +315,7 @@ class Layout:
 
         return filename
 
-    def generate(self):
+    def generate_start_layout(self):
         self.serialize();
         self.a_star = AStarSolver(((0,0,0),(self.volume[0],self.volume[1],self.volume[1])),self.get_kind)
         # start with ports
@@ -209,7 +339,8 @@ class Layout:
             if( not self.fill_volume(cell) ):
                 print(f"Could not fill cell {cell.name} volume {cell.pos}")
 
-        ## TODO @(dleiferives,e48135de-37d3-47a8-9d9c-03b1bad26537): then do wires ~#
+    # used for fitness
+    def generate_paths(self):
         output_paths = []
         for cell in self.generated_cells:
             kind = CELL_KINDS[cell.kind]
@@ -235,15 +366,28 @@ class Layout:
                         output_paths.append(((startx,starty,startz),(endx,endy,endz)))
 
         print(f"{len(output_paths)} to solve")
-        for idx, path in enumerate(output_paths):
-            print(f"{idx} / {len(output_paths)} solved")
-            solved_path = self.a_star.solve(path[0],path[1])
-            if(len(solved_path) == 0):
-                print(path)
-            self.gen_wires.append(solved_path)
-            self.fill_path(solved_path)
+        for i in range(len(output_paths)):
 
-        return 0;
+            res_length = 0
+            max_len = 0
+            fail = False
+            for idx, path in enumerate(output_paths):
+                print(f"{idx} / {len(output_paths)} solved")
+                print(f"{path[0]}{path[1]}")
+                solved_path = self.a_star.solve(path[0],path[1])
+                if(len(solved_path) == 0):
+                    output_paths.insert(0,output_paths.pop(idx))
+                    fail = True
+                    break
+                if(len(solved_path) > max_len):
+                    max_len = len(solved_path)
+                res_length += len(solved_path)
+                self.gen_wires.append(solved_path)
+                self.fill_path(solved_path)
+            if(fail == False):
+                return res_length, max_len
+
+        return -1,-1
 
 
     def parse_ports(self,ports):
@@ -295,13 +439,16 @@ class Layout:
             x = step[0]
             y = step[1]
             z = step[2]
-            filled = self.get_kind(x,y,z)
-            if isinstance(filled, list):
-                continue
-            elif filled is None:
-                self.grid[self.get_index(x,y,z)] = path
-            else:
-                print(f"path trying to place at {x} {y} {z} object {self.grid[self.get_index(x,y,z)]} present")
+            for dz in [-1, 0, 1]:
+                filled = self.get_kind(x,y,z+dz)
+                if isinstance(filled, list):
+                    continue
+                elif filled is None:
+                    if(dz != 0):
+                        self.grid[self.get_index(x,y,z+dz)] = path
+
+                else:
+                    print(f"path trying to place at {x} {y} {z} object {self.grid[self.get_index(x,y,z)]} present")
 
     def fill_volume(self, cell):
         x = cell.pos[0]

@@ -22,7 +22,10 @@ def main():
 
     layout = Layout(cells={},ports={})
     layout.parse_json(json_data)
-    layout.generate();
+    layout.generate_start_layout();
+    nbt_gen = NBTGenerator(layout);
+    nbt_gen.generate_file(args.json_file+"_layout.nbt")
+    layout.generate_paths();
     nbt_gen = NBTGenerator(layout);
     nbt_gen.generate_file(args.json_file+"_layout.nbt")
 
