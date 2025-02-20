@@ -73,6 +73,13 @@ class NBTGenerator:
                                         sim_y = c_y + dy
                                         sim_z = c_z + dz
                                         grid[sim_x][sim_y][sim_z] = "minecraft:white_wool"
+        wires = self.gen_wires
+        for wire in wires:
+            for step in wire:
+                tx = step[0]
+                ty = step[1]
+                tz = step[2]
+                grid[tx][ty][tz] = "minecraft:red_wool"
 
         # # Mark wire route voxels as red wool (overriding any cell fill).
         # for route in routes:

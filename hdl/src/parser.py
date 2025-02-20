@@ -164,6 +164,7 @@ class Layout:
             temp.append(None);
         self.grid = temp
         self.generated_cells = []
+        self.gen_wires = []
         self.cells_lut = {}
         self.a_star = None;
 
@@ -234,6 +235,7 @@ class Layout:
         for idx, path in enumerate(output_paths):
             print(f"{idx} / {len(output_path)} solved")
             solved_path = self.a_star.solve(path[0],path[1])
+            self.gen_wires.append(solved_path)
             self.fill_path(solved_path)
 
         return 0;
