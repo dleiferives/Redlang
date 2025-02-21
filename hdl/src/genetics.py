@@ -13,7 +13,7 @@ import sys
 #
 # Fitness:
 #  - Average path length 0.8
-#  - Max path length 0.2
+#  - Number paths
 
 class GeneticHandler:
 

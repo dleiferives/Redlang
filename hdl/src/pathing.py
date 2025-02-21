@@ -30,7 +30,12 @@ class AStarSolver:
                       current cell if this path is to be used as an entry point.
         """
         self.bounds = bounds
-        self.get_kind = get_kind
+        self.get_kind_func = get_kind
+        self.lut = {}
+        self.invalid_path_lut = {}
+        self.invalid_lut = {}
+        self.clearance_lut = {}
+        self.kind_lut = {}
 
         (self.min_x, self.min_y, self.min_z), (
             self.max_x,
@@ -64,6 +69,14 @@ class AStarSolver:
             self.horizontal_moves + self.staircase_moves_up + self.staircase_moves_down
         )
 
+    def get_kind(self, pos):
+        if pos in self.kind_lut:
+            return self.kind_lut[pos]
+        kind = self.get_kind_func(*pos)
+        self.kind_lut[pos] = kind
+        return kind
+
+
     def in_bounds(self, pos: Tuple[int, int, int]) -> bool:
         """Check if the given position is within bounds."""
         x, y, z = pos
@@ -90,7 +103,10 @@ class AStarSolver:
         start or goal. This ensures the wiring cell is completely isolated,
         except in the direction where it connects to an endpoint.
         """
+        if pos in self.clearance_lut:
+            return self.clearance_lut[pos]
         x, y, z = pos
+
 
         for d in [[0, 0, 1],
                     [0, 0, -1],
@@ -115,7 +131,7 @@ class AStarSolver:
                     ]:
             dx, dy, dz = d
             neighbor = (x + dx, y + dy, z + dz)
-            kind = self.get_kind(*neighbor)
+            kind = self.get_kind(neighbor)
             if(neighbor in ignore):
                 continue
             if dx == 0 and dy == 0 and dz == 0:
@@ -123,9 +139,11 @@ class AStarSolver:
             if not self.in_bounds(neighbor):
                 # if(start == (9, 20, 34)):
                 #     print(f"failed {neighbor} bounds")
+                self.clearance_lut[pos] = False
                 return False
             # The neighbor must be air.
             if kind == False:
+                self.clearance_lut[pos] = False
                 return False
             if kind is None:
                 flag = True
@@ -142,7 +160,7 @@ class AStarSolver:
                         n2 = (neighbor[0] + dx2, neighbor[1] + dy2, neighbor[2] + dz2)
                         if n2 in ignore:
                             continue
-                        k2 = self.get_kind(*n2)
+                        k2 = self.get_kind(n2)
                         if n2 == start or n2 == goal:
                             flag = True
                             break
@@ -161,10 +179,12 @@ class AStarSolver:
                     if flag == True:
                         continue
                     else:
+                        self.clearance_lut[pos] = False
                         return False
                 else:
                     continue
             if not (isinstance(kind, tuple)):
+                self.clearance_lut[pos] = False
                 return False
             else:
                 pid, state, *_ = kind
@@ -176,8 +196,21 @@ class AStarSolver:
                     continue
                 # if(start == (9, 20, 34)):
                 #     print(f"failed {neighbor} path")
+                self.clearance_lut[pos] = False
                 return False
+        self.clearance_lut[pos] = True
         return True
+
+    def reset_path_caches(self):
+        self.clearance_lut = {}
+        self.kind_lut = {}
+        self.invalid_path_lut = {}
+
+    def reset_caches(self):
+        self.invalid_lut = {}
+        self.invalid_path_lut = {}
+        self.clearance_lut = {}
+        self.kind_lut = {}
 
     def solve(
         self, start: Tuple[int, int, int], goal: Tuple[int, int, int],max_iterations
@@ -197,6 +230,7 @@ class AStarSolver:
           OutOfBoundsError: if start or goal are out of bounds.
           NoPathFoundError: if no valid path exists.
         """
+        self.reset_caches()
         if max_iterations == -1:
             iterations = 100000000000000
         else:
@@ -241,18 +275,25 @@ class AStarSolver:
                     current[2] + dz,
                 )
 
+                if neighbor in self.invalid_lut:
+                    continue
+                if neighbor in self.invalid_path_lut:
+                    continue
+
                 if not self.in_bounds(neighbor):
+                    self.invalid_lut[neighbor] = True
                     continue
 
                 # For endpoints, clearances are not enforced.
                 if neighbor != start and neighbor != goal:
-                    kind = self.get_kind(*neighbor)
+                    kind = self.get_kind(neighbor)
                     if kind == False:
                         continue
 
                     if kind is None:
                         # For wiring cells, the cell must be air and have full clearance.
                         if not self._has_clearance(neighbor, start, goal):
+                            self.invalid_lut[neighbor] = True
                             continue
                         extra_paths.append((neighbor, 0))
                     else:
@@ -267,14 +308,17 @@ class AStarSolver:
                             if nstate == True:
                             # we have found our path to the goal
                                 if nneb not in npath:
+                                    self.invalid_path_lut[nneb] = True
                                     continue
                             elif nstate == False or nstate == 'top':
+                                self.invalid_path_lut[nneb] = True
                                 continue
 
                             else:
                                 # we are one away and just have to produce
                                 tdx, tdy, tdz = nneb
                                 if nneb not in npath:
+                                    self.invalid_path_lut[nneb] = True
                                     continue
                                 else:
                                     ncst = 1;

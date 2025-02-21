@@ -463,7 +463,8 @@ class Layout:
             # Save states for potential rollback or debugging.
             self.grid = [i for i in saved_grid]
             self.gen_wires = []
-            self.a_star.get_kind = self.get_kind
+            self.a_star.get_kind_func = self.get_kind
+            self.a_star.reset_caches()
 
 
             # Attempt to solve all given paths.
@@ -477,7 +478,7 @@ class Layout:
 
                     self.grid = [i for i in saved_grid]
                     self.gen_wires = []
-                    self.a_star.get_kind = self.get_kind
+                    self.a_star.get_kind_func = self.get_kind
                     output_paths = []
                     for f in failed_paths:
                         output_paths.append(f)
@@ -487,7 +488,7 @@ class Layout:
 
                 self.grid = [i for i in saved_grid]
                 self.gen_wires = []
-                self.a_star.get_kind = self.get_kind
+                self.a_star.get_kind_func = self.get_kind
 
                 # For every successful path, try to extend it a little further.
                 new_extensions = []
