@@ -343,7 +343,7 @@ class Layout:
         self.a_star = AStarSolver(((0,0,0),(self.volume[0],self.volume[1],self.volume[1])),self.get_kind)
 
     def generate_start_layout(self):
-        self.serialize();
+        # self.serialize();
         self.a_star = AStarSolver(((0,0,0),(self.volume[0],self.volume[1],self.volume[1])),self.get_kind)
         # start with ports
         for port, body in self.ports.items():
