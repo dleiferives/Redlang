@@ -254,7 +254,7 @@ class AStarSolver:
                         # For wiring cells, the cell must be air and have full clearance.
                         if not self._has_clearance(neighbor, start, goal):
                             continue
-                        extra_paths = [(neighbor, 0)]
+                        extra_paths.append((neighbor, 0))
                     else:
                         # If get_kind returns an integrated path, then only allow it if it
                         # begins or ends with the start or goal.
@@ -268,18 +268,17 @@ class AStarSolver:
                             # we have found our path to the goal
                                 if nneb not in npath:
                                     continue
+                            elif nstate == False or nstate == 'top':
+                                continue
 
-                                else:
-                                    continue
                             else:
                                 # we are one away and just have to produce
                                 tdx, tdy, tdz = nneb
-                                if nneb in npath:
-                                    extra_paths.append((neighbor, 0))
-                                    ncst = 1
-                                else:
+                                if nneb not in npath:
                                     continue
-
+                                else:
+                                    ncst = 1;
+                                    extra_paths.append((neighbor,0))
 
                             nindex = npath.index(nneb)
                             nnpath = npath[nindex:]
@@ -287,7 +286,8 @@ class AStarSolver:
                                 extra_paths.append((nstep,nix + ncst))
 
                         elif nstart == start:
-                            extra_paths.append((neighbor,0))
+                            if nstate == True or nstate is None:
+                                extra_paths.append((neighbor,0))
 
                     for alt_pos, extra_cost in extra_paths:
                         new_cost = cost_so_far[current] + 1 + extra_cost
@@ -305,7 +305,7 @@ class AStarSolver:
                         came_from[neighbor] = current
 
         raise NoPathFoundError(
-            "No valid path found from start to goal using the provided constraints."
+            f"No valid path found from start to goal in current state. {start}->{goal}"
         )
 
 

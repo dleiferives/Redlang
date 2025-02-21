@@ -28,6 +28,36 @@ def main():
     layout.generate_paths();
     nbt_gen = NBTGenerator(layout);
     nbt_gen.generate_file(args.json_file+"_layout.nbt")
+    population = []
+    for n in range(10):
+        population.append(layout.to_genome(seed=n))
+
+    base_fitness = population[0].compute_fitness()
+    for n in range(100):
+        for idx, gene in enumerate(population):
+            gene.mutate_movement();
+            gene.mutate_rand_pos();
+            population[idx] = gene
+    max_fitness = base_fitness
+    max_fgene = population[0]
+    fitness_list = []
+    for idx, gene in enumerate(population):
+        fitness = gene.compute_fitness();
+        if(max_fitness < fitness):
+            max_fgene = gene
+            max_fitness = fitness
+        fitness_list.append(fitness)
+
+
+    print(f" base fitness: {base_fitness}")
+    for idx, fitness in enumerate(fitness_list):
+        print(f"Pop {str(idx)} fitness: {fitness}")
+
+    print(f" Best fitness: {max_fitness}")
+
+    nbt_gen = NBTGenerator(max_fgene.to_layout());
+    nbt_gen.generate_file(args.json_file+"_layout_most_fit.nbt")
+
 
 
 if __name__ ==  '__main__':

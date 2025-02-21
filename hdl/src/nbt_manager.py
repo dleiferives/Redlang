@@ -59,6 +59,16 @@ class NBTGenerator:
 
         cells = layout.generated_cells;
         # Mark cell volumes as white wool.
+
+        wires = layout.gen_wires
+        for wire in wires:
+            for step in wire:
+                tx = step[0]
+                ty = step[1]
+                tz = step[2]
+                grid[tx][ty][tz] = "minecraft:redstone_wire"
+                grid[tx][ty][tz-1] = "minecraft:red_wool"
+
         for cell in cells:
                 c_x = cell.pos[0]
                 c_y = cell.pos[1]
@@ -73,13 +83,6 @@ class NBTGenerator:
                                         sim_y = c_y + dy
                                         sim_z = c_z + dz
                                         grid[sim_x][sim_y][sim_z] = "minecraft:white_wool"
-        wires = layout.gen_wires
-        for wire in wires:
-            for step in wire:
-                tx = step[0]
-                ty = step[1]
-                tz = step[2]
-                grid[tx][ty][tz] = "minecraft:red_wool"
 
         # # Mark wire route voxels as red wool (overriding any cell fill).
         # for route in routes:
@@ -94,7 +97,8 @@ class NBTGenerator:
         palette_mapping = {
                 "minecraft:air": 0,
                 "minecraft:white_wool": 1,
-                "minecraft:red_wool": 2
+                "minecraft:red_wool": 2,
+                "minecraft:redstone_wire": 3
         }
 
         # Build block compounds.
@@ -122,7 +126,8 @@ class NBTGenerator:
         pallet = nbtlib.tag.List([
                 Compound({"Name": nbtlib.tag.String("minecraft:air")}),
                 Compound({"Name": nbtlib.tag.String("minecraft:white_wool")}),
-                Compound({"Name": nbtlib.tag.String("minecraft:red_wool")})
+                Compound({"Name": nbtlib.tag.String("minecraft:red_wool")}),
+                Compound({"Name": nbtlib.tag.String("minecraft:redstone_wire")})
         ])
 
         # Build the overall schematic compound using the new format.
