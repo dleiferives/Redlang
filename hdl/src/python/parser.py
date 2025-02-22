@@ -8,6 +8,8 @@ import os
 from pathing import AStarSolver
 import copy
 
+verbose = False
+
 ## TODO @(dleiferives,4b111f97-d7e1-484f-8a5c-6d4680635be1): add rotations ~#
 
 CELL_KINDS= {
@@ -198,7 +200,8 @@ class LayoutGenome:
         buffer on all sides.
         """
         if cell.kind not in CELL_KINDS:
-            print(f"Kind {cell.kind} not found in CELL_KINDS!")
+            if verbose:
+                print(f"Kind {cell.kind} not found in CELL_KINDS!")
             sys.exit(1)
         dims = CELL_KINDS[cell.kind]
         ext_w = dims["x"] + 6  # extra space for air gap
@@ -227,7 +230,8 @@ class LayoutGenome:
         (Cells are assumed to be in the same order in both genomes.)
         """
         if len(genome1.cell_list) != len(genome2.cell_list):
-            print("Genomes have different number of cells, cannot crossbreed")
+            if verbose:
+                print("Genomes have different number of cells, cannot crossbreed")
             sys.exit(1)
         new_cell_list = []
         new_cell_lut = {}
@@ -272,6 +276,7 @@ class LayoutGenome:
             if layout_tmp.overlap > 0:
                 return -100 * layout_tmp.overlap
             res_length, max_len = layout_tmp.generate_paths()
+            del layout_tmp
         finally:
             if res_length == -1:
                 return -1e6
@@ -353,7 +358,8 @@ class Layout:
             self.generated_cells.append(cell)
             self.cells_lut[cell_name] = cell
             if( not self.fill_volume(cell) ):
-                print(f"Could not fill cell {cell.name} volume {cell.pos}")
+                if verbose:
+                    print(f"Could not fill cell {cell.name} volume {cell.pos}")
 
 
 
@@ -364,7 +370,8 @@ class Layout:
             self.generated_cells.append(cell)
             self.cells_lut[cell_name] = cell
             if( not self.fill_volume(cell) ):
-                print(f"Could not fill cell {cell.name} volume {cell.pos}")
+                if verbose:
+                    print(f"Could not fill cell {cell.name} volume {cell.pos}")
 
     def rebuild_grid(self):
         overlap = 0
@@ -415,7 +422,8 @@ class Layout:
                     dcell = self.cells_lut[dname]
                     dkind = CELL_KINDS[dcell.kind]
                     if dport not in dkind["inputs"]:
-                        print(f"wire from output {cell.name} does not go to input at {dname}")
+                        if verbose:
+                            print(f"wire from output {cell.name} does not go to input at {dname}")
                     else:
                         end_pos = dkind["inputs"][dport]
                         endx = end_pos["x"] + dcell.pos[0]
@@ -424,10 +432,10 @@ class Layout:
                         output_paths.append(
                             ((startx, starty, startz), (endx, endy, endz))
                         )
-        print(f"{len(output_paths)} to solve")
+        # print(f"{len(output_paths)} to solve")
         return output_paths
 
-    def _solve_generated_paths(self, output_paths):
+    def _solve_generated_paths(self, output_paths, large_log=False):
         """
         Attempt to solve paths in multiple iterations.
         In each iteration:
@@ -452,13 +460,18 @@ class Layout:
         base_saved_wires = [i for i in self.gen_wires]
         failed_tracker = {}
         input_paths = [ p for p in output_paths]
-        fail_repeat_reset_threshold = 2
+        fail_repeat_reset_threshold = 7
         while len(failed_paths) > 0:
             if iteration >= max_iterations:
                 return None
 
-            print(f"--- Iteration {iteration+1}: "
-                f"{len(output_paths)} paths to attempt ---")
+            if not large_log:
+                if verbose:
+                    print(f"{iteration+1}",end='\r')
+            else:
+                if verbose:
+                    print(f"--- Iteration {iteration+1}: "
+                        f"{len(output_paths)} paths to attempt ---")
 
             # Save states for potential rollback or debugging.
             self.grid = [i for i in saved_grid]
@@ -587,7 +600,8 @@ class Layout:
                         solved.reverse()
             except Exception as e:
                 failed_paths.append(path)
-                print(f"Fast attempt {limit} searches: {e}")
+                if verbose:
+                    print(f"Fast attempt {limit} searches: {e}")
             else:
 
                 if solved and solved is not False:
@@ -599,7 +613,8 @@ class Layout:
                     try:
                         solved = self.a_star.solve(path[0], path[1], -1)
                     except Exception as e:
-                        print(f"Full attempt failed: {e}")
+                        if verbose:
+                            print(f"Full attempt failed: {e}")
                         solved = False
 
                     if solved and solved is not False:
@@ -608,7 +623,8 @@ class Layout:
                         self.fill_path(solved, -1)
                     else:
                         failed_paths.append(path)
-                        print(f"Path {idx+1} failed all attempts.")
+                        if verbose:
+                            print(f"Path {idx+1} failed all attempts.")
 
         return successful_paths, failed_paths
 
@@ -684,7 +700,8 @@ class Layout:
                     fp, fstate, _, fpp = filled
                     if fstate == False or fstate == 'top':
                         if d == [0,0,0]:
-                            print(f"tried to place wire in illegal position")
+                            if verbose:
+                                print(f"tried to place wire in illegal position")
 
                     elif fstate == 'top':
                         if dz == -1:
@@ -714,7 +731,8 @@ class Layout:
                     elif dz == 1:
                         tpid = path_id[0], 'top', (x,y,z), path_id[1]
                     else:
-                        print("impossible state reached in parsing")
+                        if verbose:
+                            print("impossible state reached in parsing")
                         sys.exit("aa");
                     self.grid[self.get_index(x+dx,y+dy,z+dz)] = tpid
 
@@ -843,7 +861,8 @@ class Layout:
 
     def new_cell_pos(self,kind,trials=1000,every_pos=False):
         if kind not in CELL_KINDS:
-            print(f"kind {kind} not found in kinds {CELL_KINDS.keys()}");
+            if verbose:
+                print(f"kind {kind} not found in kinds {CELL_KINDS.keys()}");
             sys.exit(1)
 
         kind = CELL_KINDS[kind];
@@ -907,7 +926,8 @@ class Cell:
         if pos == None:
             pos = layout.new_cell_pos(kind)
         if pos == None:
-            print(f"Could not find position for cell {kind},{id},{pos},{ports},{connections}")
+            if verbose:
+                print(f"Could not find position for cell {kind},{id},{pos},{ports},{connections}")
             sys.exit(1)
         self.pos = pos
 
@@ -915,5 +935,6 @@ class Cell:
             ports = layout.get_cell_ports(name)
         if ports == None:
             ports = {}
-            print(f"WARNING: no ports for cell {name}")
+            if verbose:
+                print(f"WARNING: no ports for cell {name}")
         self.ports = ports
